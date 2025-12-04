@@ -44,7 +44,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <div className="logo">✨ n8n Generator</div>
+        <div className="logo">✨ AutoList AI</div>
       </header>
 
       <main className="app-main">

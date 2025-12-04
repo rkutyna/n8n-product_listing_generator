@@ -12,6 +12,7 @@ WORKDIR /app
 
 # Copy package.json and install production dependencies (express, etc.)
 COPY package*.json ./
+RUN apt-get update && apt-get install -y imagemagick libheif-examples && rm -rf /var/lib/apt/lists/*
 RUN npm install --production
 
 # Copy server code

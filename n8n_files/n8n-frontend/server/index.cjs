@@ -27,6 +27,16 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// DEBUG: Log sharp versions to a file to verify installation
+try {
+    const debugInfo = `Server started at ${new Date().toISOString()}\nSharp Versions: ${JSON.stringify(sharp.versions, null, 2)}\n`;
+    fs.appendFileSync(path.join(uploadDir, 'debug_log.txt'), debugInfo);
+    console.log('Sharp versions:', sharp.versions);
+} catch (err) {
+    console.error('Failed to log sharp versions:', err);
+    fs.appendFileSync(path.join(uploadDir, 'debug_log.txt'), `Failed to load sharp: ${err.message}\n`);
+}
+
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, uploadDir);
@@ -44,6 +54,9 @@ const upload = multer({
 });
 
 const sharp = require('sharp');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 // ... imports ...
 
@@ -57,10 +70,6 @@ app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
 
         if (file) {
             try {
-                // Check if we need to convert to JPEG
-                // We convert if it's NOT already a jpeg, or just to be safe and standardize everything.
-                // Sharp handles HEIC if libvips is compiled with it (standard prebuilt binaries usually do).
-
                 const originalPath = file.path;
                 const filenameWithoutExt = path.parse(file.filename).name;
                 const newFilename = `${filenameWithoutExt}.jpg`;
@@ -68,17 +77,17 @@ app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
 
                 console.log(`Processing image: ${file.originalname} -> ${newFilename}`);
 
-                // Convert to JPEG
-                await sharp(originalPath)
-                    .toFormat('jpeg', { quality: 90 })
-                    .toFile(newPath);
+                // Use ImageMagick 'convert' command
+                // This is more robust for HEIC than sharp/libvips in some environments
+                // Command: convert input.heic -quality 90 output.jpg
+                const command = `convert "${originalPath}" -quality 90 "${newPath}"`;
+                console.log(`Running command: ${command}`);
+
+                await execPromise(command);
 
                 // If the filename changed (i.e. it wasn't already .jpg), we might want to delete the original
                 // or just keep it. Let's update the file object to point to the new file.
                 if (originalPath !== newPath) {
-                    // Optional: delete original if you want to save space
-                    // fs.unlinkSync(originalPath); 
-
                     // Update file info for n8n payload
                     file.filename = newFilename;
                     file.path = newPath;
@@ -89,10 +98,11 @@ app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
 
             } catch (conversionError) {
                 console.error('Server-side image conversion failed:', conversionError);
-                // If conversion fails, we proceed with the original file? 
-                // Or fail the request? 
-                // If it's HEIC and conversion failed, n8n might not be able to read it either if it relies on standard tools.
-                // But let's log it and proceed with original, maybe n8n can handle it.
+
+                // Log error to file so user can see it
+                const logMessage = `[${new Date().toISOString()}] Error converting ${file.originalname}: ${conversionError.message}\nStack: ${conversionError.stack}\n\n`;
+                fs.appendFileSync(path.join(uploadDir, 'conversion_errors.txt'), logMessage);
+
                 console.warn('Proceeding with original file.');
             }
         }
