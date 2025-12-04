@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { processImageFile } from '../utils/imageConversion';
 
 const WorkflowForm = ({ onSubmit, isLoading }) => {
     const [formData, setFormData] = useState({
@@ -19,38 +20,20 @@ const WorkflowForm = ({ onSubmit, isLoading }) => {
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            let processedFile = file;
+            try {
+                // Use our utility to convert HEIC or other formats to JPEG
+                const processedFile = await processImageFile(file);
 
-            // Check if file is HEIC
-            if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
-                try {
-                    // Dynamically import heic2any to avoid issues during SSR/build if not needed
-                    const heic2any = (await import('heic2any')).default;
-
-                    const convertedBlob = await heic2any({
-                        blob: file,
-                        toType: 'image/jpeg',
-                        quality: 0.8
-                    });
-
-                    // Handle case where heic2any returns an array (it shouldn't for single file but good practice)
-                    const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-
-                    processedFile = new File([blob], file.name.replace(/\.heic$/i, '.jpg'), {
-                        type: 'image/jpeg'
-                    });
-                } catch (error) {
-                    console.error("Error converting HEIC:", error);
-                    // Fallback to original file if conversion fails
-                }
+                // Create object URL for preview
+                setFormData(prev => ({
+                    ...prev,
+                    Product_Image: URL.createObjectURL(processedFile),
+                    _rawFile: processedFile // Store the actual file object for submission
+                }));
+            } catch (error) {
+                console.error("Image processing failed:", error);
+                alert("Failed to process image. Please try another file.");
             }
-
-            // Create object URL for preview
-            setFormData(prev => ({
-                ...prev,
-                Product_Image: URL.createObjectURL(processedFile),
-                _rawFile: processedFile // Store the actual file object for submission
-            }));
         } else {
             setFormData(prev => ({
                 ...prev,
