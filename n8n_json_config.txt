@@ -1,5 +1,3 @@
-# n8n config file for workflow
-
 {
   "nodes": [
     {
