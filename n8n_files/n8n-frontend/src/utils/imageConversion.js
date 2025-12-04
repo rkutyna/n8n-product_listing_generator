@@ -1,4 +1,4 @@
-import heic2any from 'heic2any';
+
 
 /**
  * Converts an image file to JPEG format.
@@ -19,6 +19,11 @@ export const processImageFile = async (file) => {
     if (fileType === 'image/heic' || fileType === 'image/heif' || fileName.endsWith('.heic') || fileName.endsWith('.heif')) {
         try {
             console.log('Converting HEIC to JPEG...');
+            // Dynamically import heic2any to avoid issues with static imports of CJS modules in some Vite setups
+            // and to reduce initial bundle size.
+            const heic2anyModule = await import('heic2any');
+            const heic2any = heic2anyModule.default || heic2anyModule;
+
             const convertedBlob = await heic2any({
                 blob: file,
                 toType: 'image/jpeg',
@@ -33,7 +38,9 @@ export const processImageFile = async (file) => {
             });
         } catch (error) {
             console.error("Error converting HEIC:", error);
-            throw new Error("Failed to convert HEIC image.");
+            // Log the full error object for debugging
+            console.error(JSON.stringify(error, Object.getOwnPropertyNames(error)));
+            throw new Error(`Failed to convert HEIC image: ${error.message}`);
         }
     }
 
