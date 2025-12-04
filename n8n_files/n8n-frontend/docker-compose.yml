@@ -1,0 +1,9 @@
+services:
+  frontend:
+    build: .
+    network_mode: "host"
+    volumes:
+      # Mount the host directory containing n8n output files to the container
+      # This is where we will SAVE uploaded files too
+      - /home/rkadmin/product_listing_generator/n8n_files:/usr/share/nginx/html/files
+    restart: always
