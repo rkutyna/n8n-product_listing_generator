@@ -2,6 +2,13 @@
 
 A powerful, Dockerized frontend for generating AI-powered product listings using n8n workflows.
 
+## How to Use:
+1. Clone the repository to a local machine
+2. In the n8n directory, run "Docker compose up -d" to start the n8n instance. It should be accessible on http://localhost:5678
+3. Within the n8n_files/n8n-frontend/ directory, run "Docker compose up -d" to start the front end. This Should be accessible on http://localhost:3002
+4. You will need to sign into n8n and link both openAI and Google Gemini API keys in order to run the n8n workflow.
+5. Once signed in, simply go to the frontend page, fill in the information, and wait for the workflow to complete.
+
 ## 🚀 Features
 
 *   **Premium UI**: Glassmorphism design with smooth animations and dark mode.
