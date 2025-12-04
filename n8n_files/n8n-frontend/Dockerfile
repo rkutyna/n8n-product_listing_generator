@@ -1,5 +1,5 @@
 # Build stage for React
-FROM node:18-alpine as build
+FROM node:18 as build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # Production stage (Node.js Server)
-FROM node:18-alpine
+FROM node:18
 WORKDIR /app
 
 # Copy package.json and install production dependencies (express, etc.)
