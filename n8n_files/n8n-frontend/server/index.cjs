@@ -77,10 +77,18 @@ app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
 
                 console.log(`Processing image: ${file.originalname} -> ${newFilename}`);
 
-                // Use ImageMagick 'convert' command
-                // This is more robust for HEIC than sharp/libvips in some environments
-                // Command: convert input.heic -quality 90 output.jpg
-                const command = `convert "${originalPath}" -quality 90 "${newPath}"`;
+                // Use ImageMagick 'convert' command or 'heif-convert' depending on file type
+                // heif-convert is part of libheif-examples and is more reliable for HEIC on Debian
+
+                let command;
+                if (file.filename.toLowerCase().endsWith('.heic')) {
+                    console.log('Detected HEIC file, using heif-convert...');
+                    command = `heif-convert -q 90 "${originalPath}" "${newPath}"`;
+                } else {
+                    console.log('Using ImageMagick convert...');
+                    command = `convert "${originalPath}" -quality 90 "${newPath}"`;
+                }
+
                 console.log(`Running command: ${command}`);
 
                 await execPromise(command);
