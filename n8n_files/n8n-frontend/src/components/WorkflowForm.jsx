@@ -25,6 +25,8 @@ const WorkflowForm = ({ onSubmit, isLoading }) => {
                 const processedFile = await processImageFile(file);
 
                 // Create object URL for preview
+                // If conversion failed and we have a HEIC, the browser might not display it.
+                // We can check the type or just let it try.
                 setFormData(prev => ({
                     ...prev,
                     Product_Image: URL.createObjectURL(processedFile),
@@ -32,7 +34,16 @@ const WorkflowForm = ({ onSubmit, isLoading }) => {
                 }));
             } catch (error) {
                 console.error("Image processing failed:", error);
-                alert("Failed to process image. Please try another file.");
+                // Even if processing fails (which shouldn't happen now as we catch it in utility),
+                // we should probably allow the user to proceed with the original file if possible,
+                // or just alert if it's critical.
+                // But since utility returns file on error, this catch block is for unexpected errors.
+                alert("Image processing error. You can try submitting, but the preview might not work.");
+                setFormData(prev => ({
+                    ...prev,
+                    Product_Image: null,
+                    _rawFile: file
+                }));
             }
         } else {
             setFormData(prev => ({

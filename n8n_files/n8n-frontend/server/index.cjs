@@ -43,13 +43,59 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
 
+const sharp = require('sharp');
+
+// ... imports ...
+
 // API Endpoint
 app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
     try {
         const { Title, Description, Branding_Direction } = req.body;
-        const file = req.file;
+        let file = req.file;
 
         console.log('Received submission:', { Title, file: file?.filename });
+
+        if (file) {
+            try {
+                // Check if we need to convert to JPEG
+                // We convert if it's NOT already a jpeg, or just to be safe and standardize everything.
+                // Sharp handles HEIC if libvips is compiled with it (standard prebuilt binaries usually do).
+
+                const originalPath = file.path;
+                const filenameWithoutExt = path.parse(file.filename).name;
+                const newFilename = `${filenameWithoutExt}.jpg`;
+                const newPath = path.join(uploadDir, newFilename);
+
+                console.log(`Processing image: ${file.originalname} -> ${newFilename}`);
+
+                // Convert to JPEG
+                await sharp(originalPath)
+                    .toFormat('jpeg', { quality: 90 })
+                    .toFile(newPath);
+
+                // If the filename changed (i.e. it wasn't already .jpg), we might want to delete the original
+                // or just keep it. Let's update the file object to point to the new file.
+                if (originalPath !== newPath) {
+                    // Optional: delete original if you want to save space
+                    // fs.unlinkSync(originalPath); 
+
+                    // Update file info for n8n payload
+                    file.filename = newFilename;
+                    file.path = newPath;
+                    file.mimetype = 'image/jpeg';
+                }
+
+                console.log('Image conversion successful');
+
+            } catch (conversionError) {
+                console.error('Server-side image conversion failed:', conversionError);
+                // If conversion fails, we proceed with the original file? 
+                // Or fail the request? 
+                // If it's HEIC and conversion failed, n8n might not be able to read it either if it relies on standard tools.
+                // But let's log it and proceed with original, maybe n8n can handle it.
+                console.warn('Proceeding with original file.');
+            }
+        }
 
         // Prepare payload for n8n
         // We send the ABSOLUTE PATH to the file so n8n can read it directly

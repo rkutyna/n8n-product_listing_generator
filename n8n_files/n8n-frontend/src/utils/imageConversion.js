@@ -40,7 +40,10 @@ export const processImageFile = async (file) => {
             console.error("Error converting HEIC:", error);
             // Log the full error object for debugging
             console.error(JSON.stringify(error, Object.getOwnPropertyNames(error)));
-            throw new Error(`Failed to convert HEIC image: ${error.message}`);
+
+            // Fallback: Return original file and let backend handle it
+            console.warn("Client-side HEIC conversion failed. Falling back to server-side conversion.");
+            return file;
         }
     }
 
