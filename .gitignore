@@ -26,4 +26,6 @@ dist-ssr
 #image files
 *.png
 *.jpg
+*.jpeg
 *.heic
+*.HEIC
