@@ -1,4 +1,4 @@
-# ✨ n8n Product Listing Generator
+# n8n Product Listing Generator
 
 A powerful, Dockerized frontend for generating AI-powered product listings using n8n workflows.
 
