@@ -1,91 +1,89 @@
 # ✨ n8n Product Listing Generator
 
-A powerful, Dockerized frontend for generating AI-powered product listings using n8n workflows.
-
-## How to Use:
-1. Clone the repository to a local machine
-2. In the n8n directory, run "Docker compose up -d" to start the n8n instance. It should be accessible on http://localhost:5678
-3. Within the n8n_files/n8n-frontend/ directory, run "Docker compose up -d" to start the front end. This Should be accessible on http://localhost:3002
-4. You will need to sign into n8n and link both openAI and Google Gemini API keys in order to run the n8n workflow.
-5. Once signed in, simply go to the frontend page, fill in the information, and wait for the workflow to complete.
-
-## 🚀 Features
-
-*   **Premium UI**: Glassmorphism design with smooth animations and dark mode.
-*   **Robust File Handling**:
-    *   **Automatic HEIC Conversion**: Automatically converts iPhone photos to JPEG on the client side.
-    *   **Direct File Uploads**: Bypasses n8n's binary data limits by uploading directly to a shared volume.
-*   **Synchronous Architecture**: Simple and reliable request/response flow.
-*   **Results Display**:
-    *   Displays generated Title, Description, Images, and Video.
-    *   **Download All**: One-click download for all generated media.
-    *   **Copy Buttons**: Quick copy for text content.
+A Dockerized frontend for generating AI-powered product listings using a self-hosted n8n workflow.
 
 ## 🏗️ Architecture
 
-*   **Frontend**: React (Vite)
-*   **Backend**: Node.js (Express) - Proxies requests to n8n and handles file uploads.
-*   **Automation**: n8n (Self-hosted)
-*   **Storage**: Shared Docker volume for persisting images and videos.
+* **Frontend**: React (Vite)
+* **Backend**: Node.js (Express) — proxies requests to n8n and handles file uploads
+* **Automation**: n8n (self-hosted, runs alongside the frontend in the same Compose project)
+* **Storage**: A shared bind mount (`./n8n_files`) that both containers see at `/files`
 
-## 🛠️ Setup & Installation
+```
+.
+├── docker-compose.yml      # both services + shared network + shared volume
+├── frontend/               # React app + Express backend (single container)
+├── n8n_files/              # runtime upload volume (contents gitignored)
+├── n8n_workflow.json       # importable n8n workflow definition
+└── README.md
+```
+
+## 🚀 Features
+
+* Glassmorphism UI with dark mode
+* Automatic HEIC → JPEG conversion (client-side via `heic2any`, server-side fallback via `heif-convert`)
+* Direct file uploads to a shared volume (avoids n8n's binary-data limits)
+* One-click download of all generated media
+
+## 🛠️ Setup
 
 ### Prerequisites
-*   Docker & Docker Compose
-*   n8n running on the same host (port 5678)
+* Docker & Docker Compose
 
-### 1. Clone the Repository
+### 1. Clone
 ```bash
 git clone https://github.com/rkutyna/n8n-product_listing_generator.git
 cd n8n-product_listing_generator
 ```
 
-### 2. Configure Docker Compose
-Ensure your `docker-compose.yml` mounts the same volume that n8n uses for file storage.
-```yaml
-volumes:
-  - /home/rkadmin/n8n_files:/usr/share/nginx/html/files
-```
-
-### 3. Run the Application
+### 2. Start everything
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
-The app will be available at `http://localhost:3002` (or your mini PC's IP).
 
-## 🤖 n8n Workflow Configuration
+Services:
+* Frontend → http://localhost:3002
+* n8n editor → http://localhost:5678
 
-Your n8n workflow should be set up as follows:
+### 3. First-time n8n setup
+1. Open http://localhost:5678 and create the owner account.
+2. Import `n8n_workflow.json` (Workflows → Import from File).
+3. Add credentials for **OpenAI** and **Google Gemini** in n8n's Credentials section.
+4. **Activate** the workflow (toggle in the top-right of the editor). The Webhook node listens at `POST /webhook/form-submit`.
 
-1.  **Webhook Node**:
-    *   Method: `POST`
-    *   Path: `submit-form`
-2.  **Processing**:
-    *   Use the `Image_Filename` from the input to read the file from disk: `/home/rkadmin/n8n_files/{{ $json.Image_Filename }}`.
-3.  **Response**:
-    *   Use a **Respond to Webhook** node.
-    *   **Response Body**: Use an Expression to return the following JSON structure:
+### 4. Use it
+1. Open http://localhost:3002.
+2. Fill in Title, Description, Branding Direction, upload a product image.
+3. Click **Generate Magic** and wait for the workflow to complete.
+
+## 🤖 Workflow notes
+
+The Webhook node uses path `form-submit`. Inside the n8n container, uploaded files are at `/files/{{ $json.body.Image_Filename }}` (the bind mount maps `./n8n_files` on the host to `/files` in both containers).
+
+The **Respond to Webhook** node should return:
 
 ```javascript
 {{
   JSON.stringify({
     "description": $json.Description,
-    "title": $('Webhook').item.json.body.Title,
-    "image1": $('Read/Write Files from Disk').item.json.fileName,
-    "image2": $('Read/Write Files from Disk1').item.json.fileName,
-    "image3": $('Read/Write Files from Disk2').item.json.fileName,
-    "video": $('Read/Write Files from Disk3').item.json.fileName
+    "title":       $('Webhook').item.json.body.Title,
+    "image1":      $('Read/Write Files from Disk').item.json.fileName,
+    "image2":      $('Read/Write Files from Disk1').item.json.fileName,
+    "image3":      $('Read/Write Files from Disk2').item.json.fileName,
+    "video":       $('Read/Write Files from Disk3').item.json.fileName
   })
 }}
 ```
 
-## 📝 Usage
+## ⚙️ Configuration
 
-1.  Enter a **Title** and **Description**.
-2.  Upload a **Product Image** (supports JPG, PNG, HEIC).
-3.  Click **Generate Magic**.
-4.  Wait for the AI to generate your listing.
-5.  View, Copy, or Download the results!
+Override defaults via environment variables on the `frontend` service in `docker-compose.yml`:
+
+| Variable           | Default                                       | Description                                  |
+| ------------------ | --------------------------------------------- | -------------------------------------------- |
+| `PORT`             | `3002`                                        | Port the Express server listens on           |
+| `UPLOAD_DIR`       | `/files`                                      | Where uploads are written inside the container |
+| `N8N_WEBHOOK_URL`  | `http://n8n:5678/webhook/form-submit`         | n8n production webhook endpoint              |
 
 ## 📄 License
 MIT

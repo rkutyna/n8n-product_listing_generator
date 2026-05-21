@@ -4,63 +4,39 @@ const cors = require('cors');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
+const util = require('util');
+
+const execPromise = util.promisify(exec);
+
+const PORT = process.env.PORT || 3002;
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/files';
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'http://n8n:5678/webhook/form-submit';
 
 const app = express();
-const PORT = process.env.PORT || 3002;
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from React build
 app.use(express.static(path.join(__dirname, '../dist')));
+app.use('/files', express.static(UPLOAD_DIR));
 
-// Serve uploaded files (n8n output)
-app.use('/files', express.static('/usr/share/nginx/html/files'));
-
-// Configure Multer for file uploads
-// We save to the SAME shared volume so n8n can access it
-const uploadDir = '/usr/share/nginx/html/files';
-
-// Ensure directory exists
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// DEBUG: Log sharp versions to a file to verify installation
-try {
-    const debugInfo = `Server started at ${new Date().toISOString()}\nSharp Versions: ${JSON.stringify(sharp.versions, null, 2)}\n`;
-    fs.appendFileSync(path.join(uploadDir, 'debug_log.txt'), debugInfo);
-    console.log('Sharp versions:', sharp.versions);
-} catch (err) {
-    console.error('Failed to log sharp versions:', err);
-    fs.appendFileSync(path.join(uploadDir, 'debug_log.txt'), `Failed to load sharp: ${err.message}\n`);
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        // Create a unique filename
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
         cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
+    },
 });
 
 const upload = multer({
-    storage: storage,
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+    storage,
+    limits: { fileSize: 50 * 1024 * 1024 },
 });
 
-const sharp = require('sharp');
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
-
-// ... imports ...
-
-// API Endpoint
 app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
     try {
         const { Title, Description, Branding_Direction } = req.body;
@@ -73,81 +49,47 @@ app.post('/api/submit', upload.single('Product_Image'), async (req, res) => {
                 const originalPath = file.path;
                 const filenameWithoutExt = path.parse(file.filename).name;
                 const newFilename = `${filenameWithoutExt}.jpg`;
-                const newPath = path.join(uploadDir, newFilename);
+                const newPath = path.join(UPLOAD_DIR, newFilename);
 
-                console.log(`Processing image: ${file.originalname} -> ${newFilename}`);
+                const isHeic = file.filename.toLowerCase().endsWith('.heic');
+                const command = isHeic
+                    ? `heif-convert -q 90 "${originalPath}" "${newPath}"`
+                    : `convert "${originalPath}" -quality 90 "${newPath}"`;
 
-                // Use ImageMagick 'convert' command or 'heif-convert' depending on file type
-                // heif-convert is part of libheif-examples and is more reliable for HEIC on Debian
-
-                let command;
-                if (file.filename.toLowerCase().endsWith('.heic')) {
-                    console.log('Detected HEIC file, using heif-convert...');
-                    command = `heif-convert -q 90 "${originalPath}" "${newPath}"`;
-                } else {
-                    console.log('Using ImageMagick convert...');
-                    command = `convert "${originalPath}" -quality 90 "${newPath}"`;
-                }
-
-                console.log(`Running command: ${command}`);
-
+                console.log(`Converting image: ${file.originalname} -> ${newFilename}`);
                 await execPromise(command);
 
-                // If the filename changed (i.e. it wasn't already .jpg), we might want to delete the original
-                // or just keep it. Let's update the file object to point to the new file.
                 if (originalPath !== newPath) {
-                    // Update file info for n8n payload
                     file.filename = newFilename;
                     file.path = newPath;
                     file.mimetype = 'image/jpeg';
                 }
-
-                console.log('Image conversion successful');
-
             } catch (conversionError) {
-                console.error('Server-side image conversion failed:', conversionError);
-
-                // Log error to file so user can see it
-                const logMessage = `[${new Date().toISOString()}] Error converting ${file.originalname}: ${conversionError.message}\nStack: ${conversionError.stack}\n\n`;
-                fs.appendFileSync(path.join(uploadDir, 'conversion_errors.txt'), logMessage);
-
-                console.warn('Proceeding with original file.');
+                console.error('Image conversion failed, proceeding with original file:', conversionError);
             }
         }
 
-        // Prepare payload for n8n
-        // We send the ABSOLUTE PATH to the file so n8n can read it directly
         const n8nPayload = {
             Title,
             Description,
             Branding_Direction,
-            // If running in Docker with shared volume, this path must be valid INSIDE n8n container
-            // We assume n8n mounts the same volume at /home/rkadmin/n8n_files (or similar)
-            // BUT: The user said n8n saves to /home/rkadmin/n8n_files on HOST.
-            // We need to know where n8n sees this file.
-            // Let's send the filename, and let n8n construct the path.
-            Image_Filename: file ? file.filename : null
+            Image_Filename: file ? file.filename : null,
         };
 
-        // Send to n8n Webhook
-        // Using 127.0.0.1 because we are in host networking mode
-        const n8nUrl = 'http://127.0.0.1:5678/webhook-test/form-submit';
-
-        const response = await axios.post(n8nUrl, n8nPayload);
-
+        const response = await axios.post(N8N_WEBHOOK_URL, n8nPayload);
         res.json(response.data);
-
     } catch (error) {
         console.error('Error processing submission:', error.message);
         res.status(500).json({ error: 'Failed to process submission' });
     }
 });
 
-// Catch-all handler for React routing (Regex for Express 5)
 app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Upload dir: ${UPLOAD_DIR}`);
+    console.log(`n8n webhook: ${N8N_WEBHOOK_URL}`);
 });
